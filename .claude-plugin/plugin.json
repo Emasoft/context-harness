@@ -1,0 +1,206 @@
+{
+  "name": "context-harness",
+  "version": "0.0.1",
+  "description": "Context management for Claude Code: fold completed tool results into one-line pointers at compaction instead of summarizing, keep the project's intent and status files current, and, with a Jev key, judgment gates for announced-but-undone turns, secret files under other providers, and conditional instructions. Folding needs no key; every Jev setting is off by default.",
+  "author": {
+    "name": "ysys143",
+    "url": "https://github.com/ysys143"
+  },
+  "homepage": "https://github.com/ysys143/context-harness",
+  "repository": "https://github.com/ysys143/context-harness",
+  "license": "MIT",
+  "keywords": [
+    "context",
+    "compaction",
+    "tool-results",
+    "jev",
+    "guardrails",
+    "mod"
+  ],
+  "userConfig": {
+    "keepRecentTurns": {
+      "type": "number",
+      "title": "Turns kept verbatim",
+      "description": "Tool results from this many most recent turns are never folded.",
+      "default": 2
+    },
+    "minFoldChars": {
+      "type": "number",
+      "title": "Smallest result to fold (characters)",
+      "description": "Smaller results stay; folding them saves little and costs a read_coordinate call when needed.",
+      "default": 1000
+    },
+    "keepErrorsUnder": {
+      "type": "number",
+      "title": "Keep errors shorter than (characters)",
+      "description": "Short errors stay so the model does not repeat the same mistake.",
+      "default": 2000
+    },
+    "keepTools": {
+      "type": "string",
+      "title": "Tools never folded",
+      "description": "Comma-separated tool names whose results always stay.",
+      "default": "TodoWrite,AskUserQuestion,ExitPlanMode"
+    },
+    "foldAtPercent": {
+      "type": "number",
+      "title": "Fold by itself at context % (0 = off)",
+      "description": "After a turn, fold once the context window is at least this full.",
+      "default": 60
+    },
+    "minSavedPercent": {
+      "type": "number",
+      "title": "Fold by itself only when it saves at least %",
+      "description": "Each fold rebuilds the prompt cache once, so small gains are skipped.",
+      "default": 20
+    },
+    "intentFile": {
+      "type": "string",
+      "title": "Intent file",
+      "description": "The agent's reading of what you want, with your own words as its source. Used only while it exists; empty turns it off.",
+      "default": "INTENT.md"
+    },
+    "phaseFile": {
+      "type": "string",
+      "title": "Status board file",
+      "description": "Where the work is, what is next, what needs you. Must be current before a fold. Used only while it exists; empty turns it off.",
+      "default": "PHASE.md"
+    },
+    "episodeDir": {
+      "type": "string",
+      "title": "Episode log folder",
+      "description": "Dated logs of what happened. Must have a new entry before a fold. Used only while it exists; empty turns it off.",
+      "default": "sessions"
+    },
+    "stopGate": {
+      "type": "string",
+      "title": "Stop gate (announced-but-not-done turns)",
+      "description": "off: nothing. shadow: Jev judges each turn end and only records it; the last paragraph (scrubbed) is sent to TypeSafe. active: a judged announcement makes the model continue.",
+      "options": [
+        "off",
+        "shadow",
+        "active"
+      ],
+      "default": "off"
+    },
+    "toolGate": {
+      "type": "string",
+      "title": "Tool gate (secret files, non-Anthropic providers)",
+      "description": "off: nothing. shadow: records tool calls that touch secret files or print secrets. active: refuses them when the session is served by a provider other than Anthropic, and refuses writes to this plugin's own files. Nothing is sent to TypeSafe.",
+      "options": [
+        "off",
+        "shadow",
+        "active"
+      ],
+      "default": "off"
+    },
+    "toolJev": {
+      "type": "string",
+      "title": "Tool gate: Jev judgment (external sessions)",
+      "description": "off: nothing. shadow: in sessions served by a provider other than Anthropic, Jev classifies each call the floor let through (open, standard, restricted, custom) from its path or command and records it; the scrubbed path or the command's first 200 characters are sent to TypeSafe, never file contents. active: calls judged restricted or custom are refused.",
+      "options": [
+        "off",
+        "shadow",
+        "active"
+      ],
+      "default": "off"
+    },
+    "stopThreshold": {
+      "type": "number",
+      "title": "Stop gate threshold",
+      "description": "Jev's probability of 'announce' at or above which a turn counts as announcing work.",
+      "default": 0.7
+    },
+    "timeoutMs": {
+      "type": "number",
+      "title": "Jev timeout (ms)",
+      "description": "A Jev call that takes longer is dropped and the gate does nothing.",
+      "default": 2000
+    },
+    "stopCap": {
+      "type": "number",
+      "title": "Stop gate calls per session",
+      "description": "Jev calls the stop gate may make in one session.",
+      "default": 200
+    },
+    "toolThreshold": {
+      "type": "number",
+      "title": "Tool gate threshold",
+      "description": "Jev's probability of restricted plus custom at or above which a call counts as sensitive.",
+      "default": 0.8
+    },
+    "toolCap": {
+      "type": "number",
+      "title": "Tool gate calls per session",
+      "description": "Jev calls the tool gate may make in one session; each target is asked once.",
+      "default": 300
+    },
+    "providerTrust": {
+      "type": "string",
+      "title": "Provider trust",
+      "description": "auto: decide from the session (first-party only with an Anthropic credential, no proxy, no custom CA, no Bedrock/Vertex/Foundry, and an anthropic.com endpoint). external: always treat the session as served by another provider.",
+      "options": [
+        "auto",
+        "external"
+      ],
+      "default": "auto"
+    },
+    "trustedProxies": {
+      "type": "string",
+      "title": "Trusted local proxies",
+      "description": "Comma-separated host:port of local proxies known to forward to Anthropic only (for example 127.0.0.1:9100).",
+      "default": ""
+    },
+    "instructions": {
+      "type": "string",
+      "title": "Conditional instructions",
+      "description": "off: nothing. shadow: for each prompt you type, Jev judges which fragments' conditions hold and records it; the prompt (scrubbed, first 600 characters) and the fragments' conditions are sent to TypeSafe, never their bodies. active: matching fragments are appended to that prompt once, and pinned fragments go at the end of the system prompt.",
+      "options": [
+        "off",
+        "shadow",
+        "active"
+      ],
+      "default": "off"
+    },
+    "fragmentsDir": {
+      "type": "string",
+      "title": "Fragments folder",
+      "description": "Folder of *.md fragments with when:, keywords: and pin: frontmatter. ~ means your home folder.",
+      "default": "~/.agents/fragments"
+    },
+    "instructionThreshold": {
+      "type": "number",
+      "title": "Conditional instructions threshold",
+      "description": "Jev's probability that a fragment's condition holds at or above which it is attached.",
+      "default": 0.95
+    },
+    "instructionCap": {
+      "type": "number",
+      "title": "Conditional instructions calls per session",
+      "description": "Jev calls the conditional instructions may make in one session.",
+      "default": 200
+    },
+    "foldJev": {
+      "type": "string",
+      "title": "Fold relevance (shadow only)",
+      "description": "off: nothing. shadow: at each compaction, Jev judges which large earlier tool results the current request still needs, beside what the fold policy itself folded, and records it; your last prompt (scrubbed) and each result's tool and target are sent, never the contents.",
+      "options": [
+        "off",
+        "shadow"
+      ],
+      "default": "off"
+    },
+    "foldCap": {
+      "type": "number",
+      "title": "Fold relevance calls per session",
+      "description": "Jev calls the fold judgment may make in one session (24 results per call).",
+      "default": 20
+    },
+    "apiKey": {
+      "type": "string",
+      "title": "TypeSafe API key",
+      "description": "Kept in secure storage. Without it, the plugin's .env (TYPESAFE_API_KEY=) or the TYPESAFE_API_KEY environment variable is used.",
+      "sensitive": true
+    }
+  }
+}

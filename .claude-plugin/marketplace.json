@@ -1,0 +1,6 @@
+{
+  "name": "context-harness",
+  "description": "context-harness: fold instead of summarize, project state, and Jev judgment gates for Claude Code.",
+  "owner": { "name": "ysys143" },
+  "plugins": [{ "name": "context-harness", "source": "./" }]
+}
