@@ -84,7 +84,7 @@ export type CompactLogEntry = {
   session: string
   trigger: string
   agentId?: string
-  /** passed-subagent, passed-precompute, summarized-nothing-to-fold, summarized-archive-failed, folded, folded-then-summarized, engine-skipped, hook-failed. */
+  /** passed-subagent, passed-precompute, summarized-nothing-to-fold, summarized-archive-failed, folded, folded-then-summarized, engine-skipped, hook-failed; idle-fold-requested when the mod is about to run /compact itself. */
   outcome: string
   messages: number
   folded: number
@@ -92,7 +92,7 @@ export type CompactLogEntry = {
   /** Estimates from the transcript's characters, before and after this plugin's fold. */
   estTokensBefore: number
   estTokensAfter?: number
-  /** The engine's own counts, when its summary ran and recorded them. */
+  /** The engine's own counts, when its summary ran and recorded them: after a fold, tokensBefore measures the folded transcript. */
   tokensBefore?: number
   tokensAfter?: number
   skip?: string

@@ -346,6 +346,22 @@ export const register: Register = (on, options) => {
     }
 
     isFoldScheduled = true
+    // The /compact below reaches session.compact as `manual`, like the person's
+    // own; this line, just before it in compact.log, is how the two are told apart.
+    try {
+      await logCompaction($, {
+        ts: new Date(await $.clock.now()).toISOString(),
+        session: await $.session.id(),
+        trigger: 'idle',
+        outcome: 'idle-fold-requested',
+        messages: messages.length,
+        folded: 0,
+        savedChars,
+        estTokensBefore: Math.round(before / CHARS_PER_TOKEN),
+      })
+    } catch (error) {
+      $.ui.log(`${$.plugin.name}: could not write compact.log (${String(error)})`)
+    }
     $.clock.after(1000, () => {
       // /compact as the person would type it: a compaction this plugin starts
       // with $.session.compact() skips this plugin's own session.compact hook,

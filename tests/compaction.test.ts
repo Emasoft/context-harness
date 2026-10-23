@@ -371,3 +371,17 @@ test('compact.log: keeps the last 1000 lines', async ($, on) => {
   expect(lines[0]?.outcome).toBe('old-1')
   expect(lines.at(-1)?.outcome).toBe('summarized-nothing-to-fold')
 })
+
+test('compact.log: an archive that could not be written is logged as summarized instead', async ($, on) => {
+  const io = setup(on, { failWrite: '/archive/' })
+  await $.session.compact({ trigger: 'manual', messages: OLD } as never)
+  expect(logLines(io.writes)[0]).toMatchObject({ outcome: 'summarized-archive-failed', folded: 0, savedChars: 0 })
+})
+
+test('compact.log: the idle boundary logs its own /compact before running it', async ($, on) => {
+  const io = setup(on, { messages: OLD, percent: 90 })
+  const { savedChars } = foldTranscript(OLD, makePolicy(DEFAULT_SETTINGS))
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+  await settle(() => io.commands.length > 0)
+  expect(logLines(io.writes)).toEqual([expect.objectContaining({ trigger: 'idle', outcome: 'idle-fold-requested', savedChars, folded: 0 })])
+})
