@@ -1,4 +1,4 @@
-import type { Register } from 'claude-code'
+import type { Register, SessionCompactResult } from 'claude-code'
 import { DEFAULT_SETTINGS, SETTING_KEYS, dueBeforeFold, dueNote, foldTranscript, makePolicy, reportFor, settingsFrom, sliceLines, transcriptChars, type PolicySettings } from './fold'
 import { FOLD_POINT } from './fold-judge'
 import { afterCompaction, anchorsOf, judgeFold, note, since, type Continuity } from './fold-flow'
@@ -12,7 +12,7 @@ import { harnessSettingsFrom, usesJev } from './settings'
 import { newId, runtime, startRuntime } from './state'
 import { showStatus } from './status'
 import { STOP_MESSAGE, STOP_POINT, STOP_QUESTION, announcesByRule, lastParagraph, stopSkipReason } from './stop-gate'
-import { cleanupRecords, homeOf, legacyArchiveRoot, readArchived, readRecords, stateRoot, writeArchive, writeLabel, writeRecord } from './storage'
+import { cleanupRecords, homeOf, legacyArchiveRoot, logCompaction, readArchived, readRecords, stateRoot, writeArchive, writeLabel, writeRecord, type CompactLogEntry } from './storage'
 import { judgeTool } from './tool-flow'
 import {
   TOOL_POINT,
@@ -203,9 +203,40 @@ export const register: Register = (on, options) => {
     return below
   }).catch((_, e, next) => next(e))
 
-  // The fold, and beside it the shadow judgment of what it folded.
+  // The fold, and beside it the shadow judgment of what it folded. Every
+  // dispatch leaves one line in compact.log, so a /compact that came out as a
+  // plain summary can be told apart from one this hook never saw.
   on('session.compact', async ($, e, next) => {
-    if (e.agentId !== undefined || e.trigger === 'precompute') return next(e)
+    const estTokensBefore = Math.round(transcriptChars(e.messages) / CHARS_PER_TOKEN)
+    const log = async (entry: Omit<CompactLogEntry, 'ts' | 'session' | 'trigger' | 'agentId' | 'messages' | 'estTokensBefore'>): Promise<void> => {
+      // The log only reports: a failure to write it never changes the compaction.
+      try {
+        await logCompaction($, {
+          ts: new Date(await $.clock.now()).toISOString(),
+          session: await $.session.id(),
+          trigger: e.trigger,
+          ...(e.agentId === undefined ? {} : { agentId: e.agentId }),
+          messages: e.messages.length,
+          estTokensBefore,
+          ...entry,
+        })
+      } catch (error) {
+        $.ui.log(`${$.plugin.name}: could not write compact.log (${String(error)})`)
+      }
+    }
+    const engineCounts = (result: SessionCompactResult) =>
+      result.skip !== undefined
+        ? { skip: result.skip }
+        : {
+            ...(result.tokensBefore === undefined ? {} : { tokensBefore: result.tokensBefore }),
+            ...(result.tokensAfter === undefined ? {} : { tokensAfter: result.tokensAfter }),
+          }
+
+    if (e.agentId !== undefined || e.trigger === 'precompute') {
+      await log({ outcome: e.agentId !== undefined ? 'passed-subagent' : 'passed-precompute', folded: 0, savedChars: 0 })
+
+      return next(e)
+    }
 
     const sessionId = await $.session.id()
     // What follows a compaction that stands. A failure here leaves the
@@ -225,6 +256,7 @@ export const register: Register = (on, options) => {
     if (outcome.archived.length === 0) {
       const summarized = await next(e)
       if (summarized.skip === undefined) await after(0, [], true)
+      await log({ outcome: summarized.skip === undefined ? 'summarized-nothing-to-fold' : 'engine-skipped', folded: 0, savedChars: 0, ...engineCounts(summarized) })
 
       return summarized
     }
@@ -235,6 +267,7 @@ export const register: Register = (on, options) => {
       $.ui.log(`${$.plugin.name}: could not keep folded results, summarizing instead (${String(error)})`)
       const summarized = await next(e)
       if (summarized.skip === undefined) await after(0, [], true)
+      await log({ outcome: summarized.skip === undefined ? 'summarized-archive-failed' : 'engine-skipped', folded: 0, savedChars: 0, ...engineCounts(summarized) })
 
       return summarized
     }
@@ -253,9 +286,32 @@ export const register: Register = (on, options) => {
         isSummarized,
       )
     }
+    await log({
+      outcome: compacted.skip !== undefined ? 'engine-skipped' : isSummarized ? 'folded-then-summarized' : 'folded',
+      folded: compacted.skip === undefined ? outcome.archived.length : 0,
+      savedChars: compacted.skip === undefined ? outcome.savedChars : 0,
+      estTokensAfter: Math.round(tokensAfter),
+      ...engineCounts(compacted),
+    })
 
     return compacted
-  }).catch((_, e, next) => next(e))
+  }).catch(($, e, next) => {
+    // Whatever threw, the engine summarizes; the log says so without waiting on the disk.
+    void (async () =>
+      logCompaction($, {
+        ts: new Date(await $.clock.now()).toISOString(),
+        session: await $.session.id(),
+        trigger: e.trigger,
+        ...(e.agentId === undefined ? {} : { agentId: e.agentId }),
+        outcome: 'hook-failed',
+        messages: e.messages.length,
+        folded: 0,
+        savedChars: 0,
+        estTokensBefore: Math.round(transcriptChars(e.messages) / CHARS_PER_TOKEN),
+      }))().catch(() => undefined)
+
+    return next(e)
+  })
 
   // The idle boundary: the turn has ended and the person has not written yet.
   on('turn.complete', async ($, e, next) => {

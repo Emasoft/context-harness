@@ -2,6 +2,7 @@
 //   ~/.local/state/context-harness/archive/<session>/<id>.json  folded originals, never deleted
 //   ~/.local/state/context-harness/records/<session>/<point>/   judgment records, 14 days
 //   ~/.local/state/context-harness/records/labels/labels/       labels, kept
+//   ~/.local/state/context-harness/compact.log                  one line per compaction, the last 1000
 // Folds made before the rename stay readable at ~/.claude-context-fold/<session>/.
 import type { EngineInterface } from 'claude-code'
 import type { Archived } from './fold'
@@ -75,6 +76,42 @@ export async function writeArchive($: EngineInterface, sessionId: string, archiv
   const dir = `${await rootOf($)}/archive/${sessionId}`
   await ensureDir($, dir)
   for (const item of archived) await $.fs.write(`${dir}/${fileId(item.id)}.json`, JSON.stringify(item))
+}
+
+/** What one session.compact dispatch was and what this plugin made of it. */
+export type CompactLogEntry = {
+  ts: string
+  session: string
+  trigger: string
+  agentId?: string
+  /** passed-subagent, passed-precompute, summarized-nothing-to-fold, summarized-archive-failed, folded, folded-then-summarized, engine-skipped, hook-failed. */
+  outcome: string
+  messages: number
+  folded: number
+  savedChars: number
+  /** Estimates from the transcript's characters, before and after this plugin's fold. */
+  estTokensBefore: number
+  estTokensAfter?: number
+  /** The engine's own counts, when its summary ran and recorded them. */
+  tokensBefore?: number
+  tokensAfter?: number
+  skip?: string
+}
+
+export const COMPACT_LOG_LINES = 1000
+
+/**
+ * Adds one line to compact.log, keeping the last COMPACT_LOG_LINES. The file
+ * API has no append, so the file is read and written whole; at a thousand
+ * short lines that is cheap, and compactions are minutes apart.
+ */
+export async function logCompaction($: EngineInterface, entry: CompactLogEntry): Promise<void> {
+  const root = await rootOf($)
+  await ensureDir($, root)
+  const path = `${root}/compact.log`
+  const lines = (await $.fs.exists(path)) ? (await $.fs.read(path)).split('\n').filter(line => line !== '') : []
+  lines.push(JSON.stringify(entry))
+  await $.fs.write(path, `${lines.slice(-COMPACT_LOG_LINES).join('\n')}\n`)
 }
 
 /** A folded original by its call id: this plugin's archive first, then the one kept before the rename. */

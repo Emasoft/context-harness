@@ -297,3 +297,77 @@ test('an archive that could not be written still leaves the note that follows a 
   await settle(() => io.appended.length > 0)
   expect(io.appended[0]).toContain('[context-harness] This conversation was just compacted.')
 })
+
+// compact.log: one line per session.compact dispatch, whatever the hook did with it.
+const LOG = `${ROOT}/compact.log`
+const logLines = (writes: readonly { path: string; text: string }[]): Record<string, unknown>[] =>
+  ([...writes].reverse().find(w => w.path === LOG)?.text ?? '')
+    .split('\n')
+    .filter(line => line !== '')
+    .map(line => JSON.parse(line) as Record<string, unknown>)
+
+test('compact.log: nothing to fold is logged as handed to the engine summary', async ($, on) => {
+  const io = setup(on)
+  await $.session.compact({ trigger: 'manual', messages: RECENT } as never)
+  const [line] = logLines(io.writes)
+  expect(logLines(io.writes).length).toBe(1)
+  expect(line).toMatchObject({ session: 'sess-1', trigger: 'manual', outcome: 'summarized-nothing-to-fold', messages: 3, folded: 0, savedChars: 0 })
+  expect(line?.estTokensBefore).toBeGreaterThan(0)
+})
+
+test('compact.log: a fold that stands is logged with what it folded', async ($, on) => {
+  const io = setup(on)
+  const { savedChars } = foldTranscript(OLD, makePolicy(DEFAULT_SETTINGS))
+  await $.session.compact({ trigger: 'auto', messages: OLD } as never)
+  expect(logLines(io.writes)).toEqual([
+    expect.objectContaining({ trigger: 'auto', outcome: 'folded', folded: 1, savedChars, messages: OLD.length }),
+  ])
+})
+
+test('compact.log: a fold still too large is logged as folded then summarized', async ($, on) => {
+  const io = setup(on, { window: 10 })
+  await $.session.compact({ trigger: 'manual', messages: OLD } as never)
+  expect(logLines(io.writes)[0]).toMatchObject({ outcome: 'folded-then-summarized', folded: 1 })
+})
+
+test('compact.log: a skip beneath is logged with its reason and no fold counted', async ($, on) => {
+  const io = setup(on, { compactBelow: 'skip', window: 10 })
+  await $.session.compact({ trigger: 'manual', messages: OLD } as never)
+  expect(logLines(io.writes)[0]).toMatchObject({ outcome: 'engine-skipped', skip: 'skipped below', folded: 0, savedChars: 0 })
+})
+
+test('compact.log: a subagent and a precompute are logged as passed through', async ($, on) => {
+  const io = setup(on)
+  await $.session.compact({ trigger: 'auto', agentId: 'ag-1', messages: OLD } as never)
+  await $.session.compact({ trigger: 'precompute', messages: OLD } as never)
+  expect(logLines(io.writes).map(line => [line.outcome, line.agentId])).toEqual([
+    ['passed-subagent', 'ag-1'],
+    ['passed-precompute', undefined],
+  ])
+  expect(archivedIds(io.writes).size).toBe(0)
+})
+
+test('compact.log: a hook that throws is logged as failed, and the engine summarizes', async ($, on) => {
+  const io = setup(on, { usageFails: true })
+  const result = await $.session.compact({ trigger: 'manual', messages: OLD } as never)
+  expect(JSON.stringify(result)).toContain('summary')
+  await settle(() => logLines(io.writes).length > 0)
+  expect(logLines(io.writes)[0]).toMatchObject({ session: 'sess-1', outcome: 'hook-failed', messages: OLD.length })
+})
+
+test('compact.log: a log that cannot be written leaves the fold as it is', async ($, on) => {
+  const io = setup(on, { failWrite: 'compact.log' })
+  const result = await $.session.compact({ trigger: 'manual', messages: OLD } as never)
+  expect(JSON.stringify(result)).toContain('[folded Read')
+  expect(io.logs.some(line => line.includes('could not write compact.log'))).toBe(true)
+})
+
+test('compact.log: keeps the last 1000 lines', async ($, on) => {
+  const old = Array.from({ length: 1000 }, (_, i) => JSON.stringify({ outcome: `old-${i}` })).join('\n')
+  const io = setup(on, { files: { [LOG]: `${old}\n` } })
+  await $.session.compact({ trigger: 'manual', messages: RECENT } as never)
+  const lines = logLines(io.writes)
+  expect(lines.length).toBe(1000)
+  expect(lines[0]?.outcome).toBe('old-1')
+  expect(lines.at(-1)?.outcome).toBe('summarized-nothing-to-fold')
+})

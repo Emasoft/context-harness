@@ -43,6 +43,7 @@ Uninstall both first. Installed beside either, folding or sending to Jev happens
 3. **At an idle boundary**, when a turn has ended with the window at least `foldAtPercent` full, the mod runs `/compact` itself, but only if folding would remove at least `minSavedPercent` of the transcript: each compaction rebuilds the prompt cache once. When the project keeps a status board or an episode log not written since the last compaction, it first asks the agent to consolidate (at most twice).
 4. **After every compaction** it appends a note: what was folded, and which canonical files to re-read.
 5. **`read_coordinate`** (`mcp__context-harness__read_coordinate`) returns the original, or a range of its lines with `offset` and `limit`.
+6. **Every compaction is logged** to `~/.local/state/context-harness/compact.log`, one JSON line each, the last 1000 kept: when, the session, the trigger (`manual`, `auto`, `plugin`, `precompute`), what the mod did (`folded`, `folded-then-summarized`, `summarized-nothing-to-fold`, `summarized-archive-failed`, `engine-skipped`, `passed-subagent`, `passed-precompute`, `hook-failed`), how many results it folded and the characters saved, and the size before and after. A `/compact` that came out as a plain summary shows there as `summarized-nothing-to-fold`; one with no line never reached the mod. `tail -n 5 ~/.local/state/context-harness/compact.log` shows the latest.
 
 | Setting | Default | Why |
 | --- | --- | --- |
@@ -154,6 +155,7 @@ Everything the mod keeps is under one folder only you can open; every folder is 
   archive/<session>/<tool_use_id>.json   folded originals: exactly what the tools returned. Never deleted by the mod.
   records/<session>/<gate>/<id>.json     judgment records: what was sent (scrubbed), the verdicts, timings. Deleted after 14 days.
   records/labels/labels/<id>.json        your labels, kept
+  compact.log                            one line per compaction: trigger, outcome, counts. The last 1000 lines.
   replay/                                replay output
 ```
 

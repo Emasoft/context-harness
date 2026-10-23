@@ -40,6 +40,8 @@ export type Setup = {
   failList?: string
   /** Prompts are queued behind a running turn: not in the conversation yet when the next one is judged. */
   isQueued?: boolean
+  /** $.session.usage() is refused. */
+  usageFails?: boolean
 }
 
 type ApiMessage = { role: 'user' | 'assistant'; content: { type: string; text?: string }[] }
@@ -124,7 +126,7 @@ export const setup = (on: On, s: Setup = {}) => {
   on('session.id', () => ({ value: 'sess-1' }))
   on('session.cwd', () => (s.cwdFails ? { deny: 'no cwd' } : { value: '/proj' }))
   on('session.messages', (_, e) => ({ value: (e.as === 'api' ? api : (s.messages ?? [])) as never }))
-  on('session.usage', () => ({ value: { startedAt: 0, context: { window: s.window ?? 200_000, percent: s.percent ?? 10 }, rateLimits: [] } as never }))
+  on('session.usage', () => (s.usageFails ? { deny: 'no usage' } : { value: { startedAt: 0, context: { window: s.window ?? 200_000, percent: s.percent ?? 10 }, rateLimits: [] } as never }))
   on('session.append', (_, e, next) => {
     appended.push(JSON.stringify(e.message))
     return next(e)
