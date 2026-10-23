@@ -1,5 +1,6 @@
 // The judgment layer's settings: the plugin's userConfig fields beside the
 // fold policy's (those are read by settingsFrom in fold.ts).
+import type { ProviderChoice } from './key'
 
 export type Mode = 'off' | 'shadow' | 'active'
 
@@ -15,6 +16,8 @@ export type HarnessSettings = {
   providerTrust: 'auto' | 'external'
   trustedProxies: string[]
   apiKey: unknown
+  openrouterApiKey: unknown
+  jevProvider: ProviderChoice
   instructions: Mode
   fragmentsDir: string
   instructionThreshold: number
@@ -46,6 +49,8 @@ export function harnessSettingsFrom(options: Readonly<Record<string, unknown>>):
             .filter(Boolean)
         : [],
     apiKey: options.apiKey,
+    openrouterApiKey: options.openrouterApiKey,
+    jevProvider: options.jevProvider === 'typesafe' || options.jevProvider === 'openrouter' ? options.jevProvider : 'auto',
     instructions: modeOf(options.instructions),
     fragmentsDir: typeof options.fragmentsDir === 'string' && options.fragmentsDir.trim() !== '' ? options.fragmentsDir : '~/.agents/fragments',
     instructionThreshold: numberOf(options.instructionThreshold, 0.95, 0, 1),

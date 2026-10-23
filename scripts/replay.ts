@@ -9,13 +9,15 @@
 //
 // Nothing leaves the machine unless --jev N is given: then up to N scrubbed
 // last paragraphs are sent to Jev, half from turns the rule or a nudge flags,
-// and the key is read from TYPESAFE_API_KEY. Results are written as JSONL under
+// and the key is read from TYPESAFE_API_KEY, or else OPENROUTER_API_KEY (sent
+// through OpenRouter). Results are written as JSONL under
 // ~/.local/state/context-harness/replay/, readable by the user alone. The
 // default root is $CLAUDE_CONFIG_DIR/projects, or ~/.claude/projects.
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { JEV_ENDPOINT, parseResponse, probabilityOf, requestBody } from '../hooks/jev'
+import { JEV_PROVIDERS, parseResponse, probabilityOf, requestBody } from '../hooks/jev'
+import { pickProviderKey, type JevKey } from '../hooks/key'
 import { confusion, kappa } from '../hooks/report'
 import { scrub } from '../hooks/scrub'
 import { STOP_QUESTION, announcesByRule, lastParagraph, stopSkipReason } from '../hooks/stop-gate'
@@ -91,13 +93,14 @@ const arg = (name: string): string | undefined => {
   return i >= 0 ? process.argv[i + 1] : undefined
 }
 
-async function askJev(key: string, paragraph: string): Promise<{ probability?: number; ms: number; error?: string }> {
+async function askJev(key: JevKey, paragraph: string): Promise<{ probability?: number; ms: number; error?: string }> {
+  const provider = JEV_PROVIDERS[key.provider]
   const started = performance.now()
   try {
-    const response = await fetch(JEV_ENDPOINT, {
+    const response = await fetch(provider.endpoint, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-      body: requestBody({ last_paragraph: paragraph }, { stop: STOP_QUESTION }),
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${key.key}` },
+      body: requestBody({ last_paragraph: paragraph }, { stop: STOP_QUESTION }, provider.model),
       signal: AbortSignal.timeout(5000),
     })
     const ms = performance.now() - started
@@ -159,8 +162,8 @@ async function main(): Promise<void> {
   const rows: Record<string, unknown>[] = sample.map(end => ({ ...end, paragraph: scrub(end.paragraph, home), next: end.next === undefined ? undefined : scrub(end.next.slice(0, 200), home) }))
 
   if (jevCount > 0) {
-    const key = process.env.TYPESAFE_API_KEY
-    if (!key) throw new Error('--jev needs TYPESAFE_API_KEY in the environment')
+    const key = pickProviderKey('auto', { typesafe: { env: process.env.TYPESAFE_API_KEY }, openrouter: { env: process.env.OPENROUTER_API_KEY } })
+    if (!key) throw new Error('--jev needs TYPESAFE_API_KEY or OPENROUTER_API_KEY in the environment')
     const flagged = judged.filter(e => e.rule || e.weak === 'nudge')
     const rest = judged.filter(e => !e.rule && e.weak !== 'nudge')
     const picks = [...flagged.slice(0, Math.ceil(jevCount / 2)), ...rest.slice(0, jevCount)].slice(0, jevCount)

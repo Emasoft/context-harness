@@ -8,6 +8,7 @@ declare const setTimeout: (callback: () => void, ms: number) => unknown
 
 export const HOME = '/home/me'
 export const KEY_ENV = { TYPESAFE_API_KEY: 'tk-env' }
+export const OPENROUTER_ENV = { OPENROUTER_API_KEY: 'or-env' }
 
 export type Setup = {
   env?: Record<string, string>
@@ -48,7 +49,7 @@ export const prompt = (text: string): SessionMessage => ({ role: 'user', text, t
 export const setup = (on: On, s: Setup = {}) => {
   const env: Record<string, string> = { HOME, ...s.env }
   const files: Record<string, string> = { ...s.files }
-  const fetches: { headers: Record<string, string>; body: Record<string, unknown> }[] = []
+  const fetches: { url: string; headers: Record<string, string>; body: Record<string, unknown> }[] = []
   const writes: { path: string; text: string }[] = []
   const runs: string[][] = []
   // What touched the disk, in order: `run <argv0>` and `write <path>`.
@@ -110,7 +111,7 @@ export const setup = (on: On, s: Setup = {}) => {
   on('clock.after', () => ({ value: undefined }))
   on('http.fetch', async (_, e) => {
     const body = JSON.parse(e.init?.body ?? '{}') as Record<string, unknown>
-    fetches.push({ headers: { ...e.init?.headers }, body })
+    fetches.push({ url: e.url, headers: { ...e.init?.headers }, body })
     order.push('jev')
     return { value: await (s.fetch ?? (() => ({ status: 500, ok: false, headers: {}, text: '' })))(body) }
   })

@@ -2,7 +2,7 @@
 // source must still send nothing and record no judgment, whichever hook runs.
 import type { SessionMessage } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
-import { KEY_ENV, drain, prompt, setup } from './kit'
+import { KEY_ENV, OPENROUTER_ENV, drain, prompt, setup } from './kit'
 
 const call = (id: string, tool: string, input: Record<string, unknown>): SessionMessage => ({ role: 'assistant', text: '', toolUses: [{ tool_use_id: id, tool, input }] })
 const answer = (id: string, text: string): SessionMessage => ({ role: 'user', text: '', toolUses: [], toolResults: [{ tool_use_id: id, text, isError: false }] })
@@ -20,10 +20,10 @@ const typed = (text: string) => ({ text, wait: false, origin: { kind: 'composer'
 const START = { cwd: '/proj', surface: 'terminal', isInteractive: true } as never
 
 // Only the key is set; every mode is the manifest's.
-test('defaults: a key in every source, every hook run, nothing sent and no judgment recorded', { options: { apiKey: 'tk-config' } }, async ($, on) => {
+test('defaults: a key in every source, every hook run, nothing sent and no judgment recorded', { options: { apiKey: 'tk-config', openrouterApiKey: 'or-config' } }, async ($, on) => {
   const io = setup(on, {
-    env: KEY_ENV,
-    dotenv: 'TYPESAFE_API_KEY=tk-dotenv\n',
+    env: { ...KEY_ENV, ...OPENROUTER_ENV },
+    dotenv: 'TYPESAFE_API_KEY=tk-dotenv\nOPENROUTER_API_KEY=or-dotenv\n',
     messages: FOLDABLE,
     percent: 70,
     files: { '/home/me/.agents/fragments/prose.md': '---\nwhen: The person asks for prose.\nkeywords: report\n---\nWrite plainly.\n' },

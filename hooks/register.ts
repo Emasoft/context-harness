@@ -183,11 +183,11 @@ export const register: Register = (on, options) => {
     if (mode === 'shadow') {
       const result = await next(e)
       const hookMs = (await $.clock.now()) - t0
-      void (async () => finish(key && sent ? await askConditions($, sessionId, key.key, sent, toAsk) : { probabilities: new Map() }, hookMs))().catch(() => undefined)
+      void (async () => finish(key && sent ? await askConditions($, sessionId, key, sent, toAsk) : { probabilities: new Map() }, hookMs))().catch(() => undefined)
 
       return result
     }
-    const asked = key && sent ? await askConditions($, sessionId, key.key, sent, toAsk) : { probabilities: new Map<string, number>() }
+    const asked = key && sent ? await askConditions($, sessionId, key, sent, toAsk) : { probabilities: new Map<string, number>() }
     const chosen = await finish(asked, (await $.clock.now()) - t0)
     const blocks = list.filter(fragment => chosen.includes(fragment.name)).map(fragmentBlock)
 
@@ -312,7 +312,7 @@ export const register: Register = (on, options) => {
     const fragments = settings.instructions === 'off' ? undefined : await loadFragments($)
     const header = [
       `context-harness: stop ${settings.stopGate}, tool ${settings.toolGate}, tool jev ${settings.toolJev}, instructions ${settings.instructions}, fold ${settings.foldJev}`,
-      `key ${key ? `from ${key.source}` : 'none'}, provider ${trust.trust} (${trust.why})`,
+      `key ${key ? `${key.provider} from ${key.source}` : 'none'}, provider ${trust.trust} (${trust.why})`,
       ...(fragments
         ? [`fragments: ${fragments.list.length} in ${fragments.dir} (#${fragments.hash.slice(0, 6)})${fragments.problems.length ? `; skipped: ${fragments.problems.join('; ')}` : ''}`]
         : []),
@@ -370,7 +370,7 @@ export const register: Register = (on, options) => {
 
     const sent = { last_paragraph: scrub(paragraph, await homeOf($)) }
     const run = async (hookMs: number): Promise<number | undefined> => {
-      const result = await judge($, { sessionId: e.session_id, point: STOP_POINT, cap: settings.stopCap }, key.key, sent, { stop: STOP_QUESTION }, settings.timeoutMs)
+      const result = await judge($, { sessionId: e.session_id, point: STOP_POINT, cap: settings.stopCap }, key, sent, { stop: STOP_QUESTION }, settings.timeoutMs)
       const probability = result.ok ? probabilityOf(result.answers.stop!, 'announce') : undefined
       const isFlagged = probability !== undefined && probability >= settings.stopThreshold
       if (result.ok) counts.judged++

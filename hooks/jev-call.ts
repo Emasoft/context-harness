@@ -2,17 +2,22 @@
 // per-point budget around it.
 import type { EngineInterface } from 'claude-code'
 import { admit, afterCall, readBudget } from './budget'
-import { JEV_ENDPOINT, parseResponse, requestBody, type JevFailure, type JevQuestion, type JevResult } from './jev'
-import { pickKey } from './key'
+import { JEV_PROVIDERS, parseResponse, requestBody, type JevFailure, type JevQuestion, type JevResult } from './jev'
+import { pickProviderKey, type JevKey, type ProviderChoice } from './key'
 import { runtime, settingsOf } from './state'
 import { decideTrust, type Trust } from './tool-gate'
 
-/** The key from the first source that has one: sensitive setting, the plugin's .env, the environment. */
-export async function resolveKey($: EngineInterface, configured: unknown): Promise<{ key: string; source: string } | undefined> {
+/** The chosen provider's key from the first source that has one: sensitive setting, the plugin's .env, the environment. */
+export async function resolveKey($: EngineInterface, choice: ProviderChoice, configured: { typesafe: unknown; openrouter: unknown }): Promise<JevKey | undefined> {
   const dotenvPath = `${$.plugin.root}/.env`
-  const dotenv = (await $.fs.exists(dotenvPath)) ? await $.fs.read(dotenvPath) : undefined
+  const read = (await $.fs.exists(dotenvPath)) ? await $.fs.read(dotenvPath) : undefined
+  const dotenv = typeof read === 'string' ? read : undefined
 
-  return pickKey({ config: configured, dotenv: typeof dotenv === 'string' ? dotenv : undefined, env: await $.env.get('TYPESAFE_API_KEY') })
+  // Each variable is read by name, so the validator's `env reads:` line declares both.
+  return pickProviderKey(choice, {
+    typesafe: { config: configured.typesafe, dotenv, env: await $.env.get('TYPESAFE_API_KEY') },
+    openrouter: { config: configured.openrouter, dotenv, env: await $.env.get('OPENROUTER_API_KEY') },
+  })
 }
 
 /** Who serves the session: first-party only when every sign agrees. */
@@ -35,8 +40,9 @@ export async function resolveTrust($: EngineInterface, override: 'auto' | 'exter
   })
 }
 
-export async function keyFor($: EngineInterface): Promise<{ key: string; source: string } | undefined> {
-  if (runtime.key === undefined) runtime.key = (await resolveKey($, settingsOf().apiKey)) ?? null
+export async function keyFor($: EngineInterface): Promise<JevKey | undefined> {
+  const settings = settingsOf()
+  if (runtime.key === undefined) runtime.key = (await resolveKey($, settings.jevProvider, { typesafe: settings.apiKey, openrouter: settings.openrouterApiKey })) ?? null
 
   return runtime.key ?? undefined
 }
@@ -51,17 +57,18 @@ export async function trustFor($: EngineInterface): Promise<{ trust: Trust; why:
 /** One Jev call, raced against a timer; never throws. */
 export async function askJev(
   $: EngineInterface,
-  key: string,
+  key: JevKey,
   state: Record<string, unknown>,
   questions: Record<string, JevQuestion>,
   timeoutMs: number,
 ): Promise<JevResult> {
+  const provider = JEV_PROVIDERS[key.provider]
   const started = await $.clock.now()
   const request = $.http
-    .fetch(JEV_ENDPOINT, {
+    .fetch(provider.endpoint, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-      body: requestBody(state, questions),
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${key.key}` },
+      body: requestBody(state, questions, provider.model),
     })
     .then(
       response => ({ response }),
@@ -84,7 +91,7 @@ export async function askJev(
 export async function judge(
   $: EngineInterface,
   budget: { sessionId: string; point: string; cap: number },
-  key: string,
+  key: JevKey,
   state: Record<string, unknown>,
   questions: Record<string, JevQuestion>,
   timeoutMs: number,

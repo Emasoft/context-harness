@@ -44,7 +44,7 @@ export async function judgeTool(
   const verdictOf = async (): Promise<{ risk: number; choice: string } | undefined> => {
     const known = toolVerdicts.get(cacheKey)
     if (known !== undefined) return known
-    const result = await judge($, { sessionId, point: 'tool-jev', cap: settings.toolCap }, key.key, sent, { data: TOOL_QUESTION }, settings.timeoutMs)
+    const result = await judge($, { sessionId, point: 'tool-jev', cap: settings.toolCap }, key, sent, { data: TOOL_QUESTION }, settings.timeoutMs)
     const answer = result.ok ? result.answers.data : undefined
     const verdict = answer === undefined ? undefined : { risk: riskOf(answer.probabilities), choice: String(answer.value) }
     if (verdict !== undefined) {

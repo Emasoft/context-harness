@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import { admit, afterCall, EMPTY_BUDGET } from '../hooks/budget'
-import { checkAnswer, parseResponse, probabilityOf, type JevQuestion } from '../hooks/jev'
-import { keyFromDotenv, pickKey } from '../hooks/key'
+import { JEV_PROVIDERS, checkAnswer, parseResponse, probabilityOf, requestBody, type JevQuestion } from '../hooks/jev'
+import { KEY_VARIABLES, keyFromDotenv, pickKey, pickProviderKey } from '../hooks/key'
 import { confusion, kappa, percentile, pointReport, sweep, type ShadowRecord } from '../hooks/report'
 import { scrub } from '../hooks/scrub'
 import { STOP_QUESTION, announcesByRule, lastParagraph, stopSkipReason } from '../hooks/stop-gate'
@@ -66,13 +66,59 @@ test('a response must answer every question asked', () => {
 })
 
 test('the key comes from the sensitive setting, then the .env line, then the environment', () => {
-  expect(keyFromDotenv('A=1\nexport TYPESAFE_API_KEY="tk-1"\nB=2')).toBe('tk-1')
-  expect(keyFromDotenv("TYPESAFE_API_KEY='tk-2'")).toBe('tk-2')
-  expect(keyFromDotenv('# TYPESAFE_API_KEY=x\nOTHER=1')).toBe(undefined)
-  expect(pickKey({ config: 'from-config', dotenv: 'TYPESAFE_API_KEY=from-file', env: 'from-env' })).toEqual({ key: 'from-config', source: 'config' })
-  expect(pickKey({ config: '', dotenv: 'TYPESAFE_API_KEY=from-file', env: 'from-env' })).toEqual({ key: 'from-file', source: 'dotenv' })
-  expect(pickKey({ dotenv: 'OTHER=1', env: 'from-env' })).toEqual({ key: 'from-env', source: 'env' })
-  expect(pickKey({})).toBe(undefined)
+  const T = 'TYPESAFE_API_KEY'
+  expect(keyFromDotenv('A=1\nexport TYPESAFE_API_KEY="tk-1"\nB=2', T)).toBe('tk-1')
+  expect(keyFromDotenv("TYPESAFE_API_KEY='tk-2'", T)).toBe('tk-2')
+  expect(keyFromDotenv('# TYPESAFE_API_KEY=x\nOTHER=1', T)).toBe(undefined)
+  expect(pickKey({ config: 'from-config', dotenv: 'TYPESAFE_API_KEY=from-file', env: 'from-env' }, T)).toEqual({ key: 'from-config', source: 'config' })
+  expect(pickKey({ config: '', dotenv: 'TYPESAFE_API_KEY=from-file', env: 'from-env' }, T)).toEqual({ key: 'from-file', source: 'dotenv' })
+  expect(pickKey({ dotenv: 'OTHER=1', env: 'from-env' }, T)).toEqual({ key: 'from-env', source: 'env' })
+  expect(pickKey({}, T)).toBe(undefined)
+})
+
+test('the OpenRouter key has the same three sources, and its .env line is its own', () => {
+  const O = KEY_VARIABLES.openrouter
+  expect(O).toBe('OPENROUTER_API_KEY')
+  const dotenv = 'TYPESAFE_API_KEY=tk-file\nexport OPENROUTER_API_KEY="or-file"\n'
+  expect(keyFromDotenv(dotenv, O)).toBe('or-file')
+  // A TypeSafe line is never read as an OpenRouter key, nor a longer name that ends the same.
+  expect(keyFromDotenv('TYPESAFE_API_KEY=tk-file\nMY_OPENROUTER_API_KEY=x', O)).toBe(undefined)
+  expect(pickKey({ config: 'or-config', dotenv, env: 'or-env' }, O)).toEqual({ key: 'or-config', source: 'config' })
+  expect(pickKey({ config: ' ', dotenv, env: 'or-env' }, O)).toEqual({ key: 'or-file', source: 'dotenv' })
+  expect(pickKey({ dotenv: 'TYPESAFE_API_KEY=tk-file', env: 'or-env' }, O)).toEqual({ key: 'or-env', source: 'env' })
+})
+
+test('auto takes a TypeSafe key first, then an OpenRouter one; a named provider never falls back', () => {
+  const both = { typesafe: { env: 'tk-env' }, openrouter: { env: 'or-env' } }
+  const onlyTypeSafe = { typesafe: { env: 'tk-env' }, openrouter: {} }
+  const onlyOpenRouter = { typesafe: {}, openrouter: { config: 'or-config' } }
+  expect(pickProviderKey('auto', both)).toEqual({ key: 'tk-env', source: 'env', provider: 'typesafe' })
+  expect(pickProviderKey('auto', onlyOpenRouter)).toEqual({ key: 'or-config', source: 'config', provider: 'openrouter' })
+  expect(pickProviderKey('openrouter', both)).toEqual({ key: 'or-env', source: 'env', provider: 'openrouter' })
+  expect(pickProviderKey('typesafe', both)).toEqual({ key: 'tk-env', source: 'env', provider: 'typesafe' })
+  expect(pickProviderKey('openrouter', onlyTypeSafe)).toBe(undefined)
+  expect(pickProviderKey('typesafe', onlyOpenRouter)).toBe(undefined)
+  expect(pickProviderKey('auto', { typesafe: {}, openrouter: {} })).toBe(undefined)
+})
+
+test('each provider is asked at its own endpoint with its own model id', () => {
+  expect(JEV_PROVIDERS.typesafe).toEqual({ name: 'typesafe', endpoint: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' })
+  expect(JEV_PROVIDERS.openrouter).toEqual({ name: 'openrouter', endpoint: 'https://openrouter.ai/api/alpha/decisions', model: '~typesafe/jev-latest' })
+  const body = JSON.parse(requestBody({ last_paragraph: 'p' }, { stop: STOP_QUESTION }, JEV_PROVIDERS.openrouter.model))
+  expect(body).toEqual({ state: { last_paragraph: 'p' }, questions: { stop: STOP_QUESTION }, model: '~typesafe/jev-latest' })
+})
+
+test("OpenRouter's answer parses as TypeSafe's does; its id, provider and cost are ignored", () => {
+  // The body OpenRouter returned on 2026-10-23 for the stop question.
+  const body =
+    '{"model":"typesafe/jev-1.14-20261014","answers":{"stop":{"type":"choice","choice":"announce","probabilities":{"announce":0.99,"report":0.01},"confidence":0.98}},' +
+    '"usage":{"input_tokens":358,"output_tokens":31,"cost":0.000015036},"id":"gen-dec-1792735010-KGzgwzUcDEhNKPkR7Hiq","provider":"TypeSafe"}'
+  expect(parseResponse(body, { stop: STOP_QUESTION })).toEqual({
+    ok: true,
+    model: 'typesafe/jev-1.14-20261014',
+    answers: { stop: { type: 'choice', value: 'announce', confidence: 0.98, probabilities: { announce: 0.99, report: 0.01 } } },
+    usage: { input_tokens: 358, output_tokens: 31 },
+  })
 })
 
 test('scrub removes secrets, addresses and the home folder', () => {

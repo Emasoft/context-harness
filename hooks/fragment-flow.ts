@@ -4,6 +4,7 @@ import type { EngineInterface } from 'claude-code'
 import { INSTRUCTIONS_POINT, MAX_FRAGMENTS, attachedNames, conditionQuestion, fragmentsHash, isFragment, parseFragment, type Fragment } from './instructions'
 import { probabilityOf, type JevResult } from './jev'
 import { errorOf, judge } from './jev-call'
+import type { JevKey } from './key'
 import { newId, runtime, settingsOf } from './state'
 import { homeOf, writeRecord } from './storage'
 
@@ -118,7 +119,7 @@ export async function recordFragments(
 export async function askConditions(
   $: EngineInterface,
   sessionId: string,
-  key: string,
+  key: JevKey,
   sent: Record<string, unknown>,
   candidates: readonly Fragment[],
 ): Promise<{ result?: JevResult; probabilities: Map<string, number> }> {

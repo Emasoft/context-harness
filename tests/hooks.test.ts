@@ -1,7 +1,7 @@
 import type { HttpResponse } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 import { STOP_MESSAGE } from '../hooks/stop-gate'
-import { HOME, KEY_ENV, records, settle, setup as kitSetup, type On, type Setup } from './kit'
+import { HOME, KEY_ENV, OPENROUTER_ENV, records, settle, setup as kitSetup, type On, type Setup } from './kit'
 
 const ANNOUNCE = (p: number): HttpResponse => ({
   status: 200,
@@ -105,6 +105,80 @@ test('the sensitive setting outranks the plugin .env, which outranks the environ
   const io = setup(on, { env: KEY_ENV })
   await $.classic.Stop(STOP)
   expect(io.fetches[0]?.headers.authorization).toBe('Bearer tk-config')
+})
+
+// The body OpenRouter returned on 2026-10-23, with the probability the test needs.
+const OPENROUTER_ANNOUNCE = (p: number): HttpResponse => ({
+  status: 200,
+  ok: true,
+  headers: {},
+  text: JSON.stringify({
+    model: 'typesafe/jev-1.14-20261014',
+    answers: { stop: { type: 'choice', choice: p >= 0.5 ? 'announce' : 'report', probabilities: { announce: p, report: 1 - p }, confidence: 0.98 } },
+    usage: { input_tokens: 358, output_tokens: 31, cost: 0.000015036 },
+    id: 'gen-dec-1792735010-KGzgwzUcDEhNKPkR7Hiq',
+    provider: 'TypeSafe',
+  }),
+})
+
+test('OpenRouter: with only its key, Jev is asked at its decisions endpoint with its model id', { options: { stopGate: 'active' } }, async ($, on) => {
+  const io = setup(on, { env: OPENROUTER_ENV, fetch: () => OPENROUTER_ANNOUNCE(0.99) })
+  expect((await $.classic.Stop(STOP)).block).toBe(STOP_MESSAGE)
+  expect(io.fetches.length).toBe(1)
+  const [sent] = io.fetches
+  expect(sent?.url).toBe('https://openrouter.ai/api/alpha/decisions')
+  expect(sent?.headers.authorization).toBe('Bearer or-env')
+  expect(sent?.headers['content-type']).toBe('application/json')
+  expect(sent?.body.model).toBe('~typesafe/jev-latest')
+  expect(Object.keys(sent?.body.questions as object)).toEqual(['stop'])
+  expect(JSON.stringify(sent?.body.state)).not.toContain('a@b.co')
+  await settle(() => records(io.writes, 'stop').length > 0)
+  expect(records(io.writes, 'stop')[0]?.jev).toBe(0.99)
+})
+
+test('OpenRouter: the sensitive setting outranks the plugin .env, which outranks the environment', { options: { stopGate: 'active', openrouterApiKey: 'or-config' } }, async ($, on) => {
+  const io = setup(on, { env: OPENROUTER_ENV, dotenv: 'OPENROUTER_API_KEY=or-dotenv\n', fetch: () => OPENROUTER_ANNOUNCE(0.99) })
+  await $.classic.Stop(STOP)
+  expect(io.fetches[0]?.headers.authorization).toBe('Bearer or-config')
+})
+
+test('OpenRouter: without the setting, the plugin .env line outranks the environment', { options: { stopGate: 'active' } }, async ($, on) => {
+  const io = setup(on, { env: OPENROUTER_ENV, dotenv: 'OPENROUTER_API_KEY=or-dotenv\n', fetch: () => OPENROUTER_ANNOUNCE(0.99) })
+  await $.classic.Stop(STOP)
+  expect(io.fetches[0]?.url).toBe('https://openrouter.ai/api/alpha/decisions')
+  expect(io.fetches[0]?.headers.authorization).toBe('Bearer or-dotenv')
+})
+
+test('auto: with both keys TypeSafe is asked, as before OpenRouter was added', { options: { stopGate: 'active' } }, async ($, on) => {
+  const io = setup(on, { env: { ...KEY_ENV, ...OPENROUTER_ENV } })
+  await $.classic.Stop(STOP)
+  expect(io.fetches[0]?.url).toBe('https://api.typesafe.ai/v1/systemone')
+  expect(io.fetches[0]?.headers.authorization).toBe('Bearer tk-env')
+  expect(io.fetches[0]?.body.model).toBe('jev-latest')
+})
+
+test('jevProvider openrouter: with both keys OpenRouter is asked', { options: { stopGate: 'active', jevProvider: 'openrouter' } }, async ($, on) => {
+  const io = setup(on, { env: { ...KEY_ENV, ...OPENROUTER_ENV }, fetch: () => OPENROUTER_ANNOUNCE(0.99) })
+  await $.classic.Stop(STOP)
+  expect(io.fetches[0]?.url).toBe('https://openrouter.ai/api/alpha/decisions')
+  expect(io.fetches[0]?.headers.authorization).toBe('Bearer or-env')
+})
+
+test('jevProvider openrouter with only a TypeSafe key sends nothing and says no key', { options: { stopGate: 'shadow', jevProvider: 'openrouter' } }, async ($, on) => {
+  const io = setup(on, { env: KEY_ENV })
+  await $.session.start({ cwd: '/proj', surface: 'terminal', isInteractive: true } as never)
+  await $.classic.Stop(STOP)
+  await settle(() => records(io.writes, 'stop').length > 0)
+  expect(io.fetches.length).toBe(0)
+  expect(records(io.writes, 'stop')[0]?.error).toBe('no-key')
+  expect(io.statuses).toContain('jev: no key')
+})
+
+test('OpenRouter: a 403 (a key or account state) ends the turn and is recorded as http 403', { options: { stopGate: 'active' } }, async ($, on) => {
+  const io = setup(on, { env: OPENROUTER_ENV, fetch: () => ({ status: 403, ok: false, headers: {}, text: '{"error":{"code":403,"message":"forbidden"}}' }) })
+  expect((await $.classic.Stop(STOP)).block).toBe(undefined)
+  await settle(() => records(io.writes, 'stop').length > 0)
+  expect(records(io.writes, 'stop')[0]?.error).toBe('http 403')
 })
 
 test('the call cap and the circuit stop sending', { options: { stopGate: 'active', stopCap: 1 } }, async ($, on) => {

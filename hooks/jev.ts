@@ -1,8 +1,19 @@
 // The Jev request and response, as plain data: building the body, checking
 // the answer, and turning it into one probability. Sending is register.ts's.
 
-export const JEV_ENDPOINT = 'https://api.typesafe.ai/v1/systemone'
-export const JEV_MODEL = 'jev-latest'
+export type JevProviderName = 'typesafe' | 'openrouter'
+
+export type JevProvider = { name: JevProviderName; endpoint: string; model: string }
+
+// The same Jev behind two hosts. OpenRouter takes the same body with its own
+// model id and answers in the same shape, adding id, provider and usage.cost,
+// which parseResponse ignores (measured 2026-10-23: HTTP 200, model
+// "typesafe/jev-1.14-20261014"). Its 401, 402 and 403 are key or account
+// states, not outages; they are recorded as `http <status>` like any other.
+export const JEV_PROVIDERS: Readonly<Record<JevProviderName, JevProvider>> = {
+  typesafe: { name: 'typesafe', endpoint: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' },
+  openrouter: { name: 'openrouter', endpoint: 'https://openrouter.ai/api/alpha/decisions', model: '~typesafe/jev-latest' },
+}
 
 export type JevQuestion =
   | { type: 'choice'; instructions: string; criteria: Readonly<Record<string, string>> }
@@ -24,8 +35,8 @@ export type JevResult =
   | { ok: true; model: string; answers: Record<string, JevAnswer>; usage?: JevUsage; ms: number }
   | { ok: false; kind: JevFailure; status?: number; ms: number }
 
-export function requestBody(state: Readonly<Record<string, unknown>>, questions: Readonly<Record<string, JevQuestion>>): string {
-  return JSON.stringify({ state, questions, model: JEV_MODEL })
+export function requestBody(state: Readonly<Record<string, unknown>>, questions: Readonly<Record<string, JevQuestion>>, model: string): string {
+  return JSON.stringify({ state, questions, model })
 }
 
 const isProbability = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1

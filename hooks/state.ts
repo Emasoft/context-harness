@@ -2,6 +2,7 @@
 // setting) starts it over, which costs a mkdir, a lookup and the counters.
 import type { PolicySettings } from './fold'
 import type { Fragment } from './instructions'
+import type { JevKey } from './key'
 import type { HarnessSettings } from './settings'
 import type { Trust } from './tool-gate'
 
@@ -13,7 +14,7 @@ export const runtime: {
   counts: Counts
   /** What the fold removed in this process: results and characters. */
   folded: { results: number; savedChars: number }
-  key?: { key: string; source: string } | null
+  key?: JevKey | null
   trust?: { trust: Trust; why: string }
   fragments?: { list: Fragment[]; hash: string; dir: string; problems: string[] }
   /** Per session, fragments attached here that the conversation may not show yet. */

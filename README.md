@@ -3,7 +3,7 @@
 A Claude Code mod for long sessions. It does two things, and the first needs nothing but the mod:
 
 - **Folds instead of summarizing.** When the conversation compacts, completed tool results become one-line pointers and their originals are kept on disk; the model reads them back with `read_coordinate`. The project's intent and status files, not a summary, carry the work across compactions.
-- **Judges where a rule cannot decide.** With a key for Jev, TypeSafe's decision model, it adds gates: a turn that ends by announcing work it has not done, tool calls that touch secret files when another provider serves the session, instructions attached only when a request needs them, and a record of which folded results the request still needed. **Every Jev setting is off by default**; installing the mod and having a key sends nothing.
+- **Judges where a rule cannot decide.** With a key for Jev, TypeSafe's decision model (a TypeSafe key, or an OpenRouter key that reaches the same model), it adds gates: a turn that ends by announcing work it has not done, tool calls that touch secret files when another provider serves the session, instructions attached only when a request needs them, and a record of which folded results the request still needed. **Every Jev setting is off by default**; installing the mod and having a key sends nothing.
 
 ```text
 [folded Read · …/src/billing/invoice.ts · 1201 lines — read_coordinate("toolu_01J7igoRSuY8xw8F8skCSEY3")]
@@ -127,7 +127,14 @@ In `/config` under context-harness, or in `settings.json`:
 { "pluginConfigs": { "context-harness@context-harness": { "options": { "stopGate": "shadow", "toolGate": "shadow", "toolJev": "shadow", "instructions": "shadow", "foldJev": "shadow" } } } }
 ```
 
-Everything but the tool gate floor needs a TypeSafe key, read from the first of: the `apiKey` setting (kept in secure storage; `/plugin configure context-harness@context-harness`), a `TYPESAFE_API_KEY=` line in a `.env` in the plugin's folder, or the `TYPESAFE_API_KEY` environment variable. Without one the status line says `jev: no key` and nothing is sent.
+Everything but the tool gate floor needs a key for Jev. The same Jev is reached two ways, each with its own key:
+
+| Provider | Endpoint | Model | Key, from the first of |
+| --- | --- | --- | --- |
+| TypeSafe | `https://api.typesafe.ai/v1/systemone` | `jev-latest` | the `apiKey` setting, a `TYPESAFE_API_KEY=` line in a `.env` in the plugin's folder, the `TYPESAFE_API_KEY` environment variable |
+| OpenRouter | `https://openrouter.ai/api/alpha/decisions` | `~typesafe/jev-latest` | the `openrouterApiKey` setting, an `OPENROUTER_API_KEY=` line in that `.env`, the `OPENROUTER_API_KEY` environment variable |
+
+Both settings are kept in secure storage (`/plugin configure context-harness@context-harness`). The `jevProvider` setting picks the provider: `auto` (the default) uses a TypeSafe key when there is one and an OpenRouter key otherwise; `typesafe` or `openrouter` uses only that provider's key and never falls back to the other. Without the key it needs the status line says `jev: no key` and nothing is sent; `/jev-report` names the provider and where its key came from. A 401, 402 or 403 from OpenRouter means the key or the account (credits, permissions) needs attention, not that Jev is down; like any failed call it is recorded as `http <status>`, and three in a row pause that gate for five minutes.
 
 ## Records, labels and when to turn a gate on
 
@@ -136,7 +143,7 @@ Everything but the tool gate floor needs a TypeSafe key, read from the first of:
 
 Suggested before switching the Stop gate to `active`: at least 50 positive and 100 negative labels, and a threshold with precision of 0.9 or more on them. Agreement with the rule alone is not evidence: the rule flags about 5% of turn ends, so a gate that always says "no" agrees about 95% of the time.
 
-`scripts/replay.ts` (run with `bun`) replays past transcripts (`$CLAUDE_CONFIG_DIR/projects`, or `~/.claude/projects`) through the Stop rule offline; `--jev N` sends up to N scrubbed paragraphs to Jev.
+`scripts/replay.ts` (run with `bun`) replays past transcripts (`$CLAUDE_CONFIG_DIR/projects`, or `~/.claude/projects`) through the Stop rule offline; `--jev N` sends up to N scrubbed paragraphs to Jev, with `TYPESAFE_API_KEY` or else `OPENROUTER_API_KEY` from the environment.
 
 ## Data and privacy
 
@@ -157,7 +164,7 @@ rm -rf ~/.local/state/context-harness/archive/<session-id>   # one session's ori
 rm -rf ~/.local/state/context-harness ~/.claude-context-fold # everything
 ```
 
-The mod declares, and uses only for this: the network (Jev, only with a Jev setting on and a key), processes (`mkdir`, `chmod` and `find` on its own folder), and the environment (`HOME`, `TYPESAFE_API_KEY`, and the proxy and provider variables the trust check reads). One module declares all of them, folding included, so a policy that judges modules by what they declare judges the folding with them.
+The mod declares, and uses only for this: the network (Jev, at `api.typesafe.ai` or `openrouter.ai` by the key in use, only with a Jev setting on and a key), processes (`mkdir`, `chmod` and `find` on its own folder), and the environment (`HOME`, `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`, and the proxy and provider variables the trust check reads). One module declares all of them, folding included, so a policy that judges modules by what they declare judges the folding with them.
 
 ## Measured
 

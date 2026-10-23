@@ -75,7 +75,7 @@
     "stopGate": {
       "type": "string",
       "title": "Stop gate (announced-but-not-done turns)",
-      "description": "off: nothing. shadow: Jev judges each turn end and only records it; the last paragraph (scrubbed) is sent to TypeSafe. active: a judged announcement makes the model continue.",
+      "description": "off: nothing. shadow: Jev judges each turn end and only records it; the last paragraph (scrubbed) is sent to Jev. active: a judged announcement makes the model continue.",
       "options": [
         "off",
         "shadow",
@@ -86,7 +86,7 @@
     "toolGate": {
       "type": "string",
       "title": "Tool gate (secret files, non-Anthropic providers)",
-      "description": "off: nothing. shadow: records tool calls that touch secret files or print secrets. active: refuses them when the session is served by a provider other than Anthropic, and refuses writes to this plugin's own files. Nothing is sent to TypeSafe.",
+      "description": "off: nothing. shadow: records tool calls that touch secret files or print secrets. active: refuses them when the session is served by a provider other than Anthropic, and refuses writes to this plugin's own files. Nothing is sent to Jev.",
       "options": [
         "off",
         "shadow",
@@ -97,7 +97,7 @@
     "toolJev": {
       "type": "string",
       "title": "Tool gate: Jev judgment (external sessions)",
-      "description": "off: nothing. shadow: in sessions served by a provider other than Anthropic, Jev classifies each call the floor let through (open, standard, restricted, custom) from its path or command and records it; the scrubbed path or the command's first 200 characters are sent to TypeSafe, never file contents. active: calls judged restricted or custom are refused.",
+      "description": "off: nothing. shadow: in sessions served by a provider other than Anthropic, Jev classifies each call the floor let through (open, standard, restricted, custom) from its path or command and records it; the scrubbed path or the command's first 200 characters are sent to Jev, never file contents. active: calls judged restricted or custom are refused.",
       "options": [
         "off",
         "shadow",
@@ -154,7 +154,7 @@
     "instructions": {
       "type": "string",
       "title": "Conditional instructions",
-      "description": "off: nothing. shadow: for each prompt you type, Jev judges which fragments' conditions hold and records it; the prompt (scrubbed, first 600 characters) and the fragments' conditions are sent to TypeSafe, never their bodies. active: matching fragments are appended to that prompt once, and pinned fragments go at the end of the system prompt.",
+      "description": "off: nothing. shadow: for each prompt you type, Jev judges which fragments' conditions hold and records it; the prompt (scrubbed, first 600 characters) and the fragments' conditions are sent to Jev, never their bodies. active: matching fragments are appended to that prompt once, and pinned fragments go at the end of the system prompt.",
       "options": [
         "off",
         "shadow",
@@ -201,6 +201,23 @@
       "title": "TypeSafe API key",
       "description": "Kept in secure storage. Without it, the plugin's .env (TYPESAFE_API_KEY=) or the TYPESAFE_API_KEY environment variable is used.",
       "sensitive": true
+    },
+    "openrouterApiKey": {
+      "type": "string",
+      "title": "OpenRouter API key",
+      "description": "Reaches the same Jev through OpenRouter (openrouter.ai). Kept in secure storage. Without it, the plugin's .env (OPENROUTER_API_KEY=) or the OPENROUTER_API_KEY environment variable is used.",
+      "sensitive": true
+    },
+    "jevProvider": {
+      "type": "string",
+      "title": "Jev provider",
+      "description": "auto: a TypeSafe key if there is one, else an OpenRouter key. typesafe or openrouter: only that provider's key; without it nothing is sent.",
+      "options": [
+        "auto",
+        "typesafe",
+        "openrouter"
+      ],
+      "default": "auto"
     }
   }
 }

@@ -81,7 +81,7 @@ export async function judgeFold($: EngineInterface, messages: readonly SessionMe
     const batch = candidates.slice(start, start + 24)
     const t0 = await $.clock.now()
     const questions = Object.fromEntries(batch.map((candidate, i) => [`r${i}`, foldQuestion(scrub(candidate.call, home))]))
-    const result = await judge($, { sessionId, point: FOLD_POINT, cap: settings.foldCap }, key.key, sent, questions, settings.timeoutMs * 2)
+    const result = await judge($, { sessionId, point: FOLD_POINT, cap: settings.foldCap }, key, sent, questions, settings.timeoutMs * 2)
     for (const [i, candidate] of batch.entries()) {
       const answer = result.ok ? result.answers[`r${i}`] : undefined
       const needed = answer === undefined ? undefined : probabilityOf(answer, 'needed')
