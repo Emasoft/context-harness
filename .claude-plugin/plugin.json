@@ -75,7 +75,7 @@
     "stopGate": {
       "type": "string",
       "title": "Stop gate (announced-but-not-done turns)",
-      "description": "off: nothing. shadow: Jev judges each turn end and only records it; the last paragraph (scrubbed) is sent to Jev. active: a judged announcement makes the model continue.",
+      "description": "off: nothing. shadow: Jev judges each turn end and only records it; the last paragraph (scrubbed) is sent to Jev (TypeSafe, directly or through OpenRouter). active: a judged announcement makes the model continue.",
       "options": [
         "off",
         "shadow",
@@ -97,7 +97,7 @@
     "toolJev": {
       "type": "string",
       "title": "Tool gate: Jev judgment (external sessions)",
-      "description": "off: nothing. shadow: in sessions served by a provider other than Anthropic, Jev classifies each call the floor let through (open, standard, restricted, custom) from its path or command and records it; the scrubbed path or the command's first 200 characters are sent to Jev, never file contents. active: calls judged restricted or custom are refused.",
+      "description": "off: nothing. shadow: in sessions served by a provider other than Anthropic, Jev classifies each call the floor let through (open, standard, restricted, custom) from its path or command and records it; the scrubbed path or the command's first 200 characters are sent to Jev (TypeSafe, directly or through OpenRouter), never file contents. active: calls judged restricted or custom are refused.",
       "options": [
         "off",
         "shadow",
@@ -154,7 +154,7 @@
     "instructions": {
       "type": "string",
       "title": "Conditional instructions",
-      "description": "off: nothing. shadow: for each prompt you type, Jev judges which fragments' conditions hold and records it; the prompt (scrubbed, first 600 characters) and the fragments' conditions are sent to Jev, never their bodies. active: matching fragments are appended to that prompt once, and pinned fragments go at the end of the system prompt.",
+      "description": "off: nothing. shadow: for each prompt you type, Jev judges which fragments' conditions hold and records it; the prompt (scrubbed, first 600 characters) and the fragments' conditions are sent to Jev (TypeSafe, directly or through OpenRouter), never their bodies. active: matching fragments are appended to that prompt once, and pinned fragments go at the end of the system prompt.",
       "options": [
         "off",
         "shadow",

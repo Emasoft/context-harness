@@ -16,6 +16,7 @@ export const KEY_VARIABLES: Readonly<Record<JevProviderName, string>> = { typesa
 
 /** The value of the `variable` line of a .env text; other lines are ignored. */
 export function keyFromDotenv(text: string, variable: string): string | undefined {
+  // Unescaped: `variable` is always one of KEY_VARIABLES, letters and underscores only.
   const pattern = new RegExp(`^(?:export\\s+)?${variable}\\s*=\\s*(.*)$`)
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim()

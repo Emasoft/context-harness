@@ -8,8 +8,10 @@ export type JevProvider = { name: JevProviderName; endpoint: string; model: stri
 // The same Jev behind two hosts. OpenRouter takes the same body with its own
 // model id and answers in the same shape, adding id, provider and usage.cost,
 // which parseResponse ignores (measured 2026-10-23: HTTP 200, model
-// "typesafe/jev-1.14-20261014"). Its 401, 402 and 403 are key or account
-// states, not outages; they are recorded as `http <status>` like any other.
+// "typesafe/jev-1.14-20261014"). Its 401 and 402 are key or account states,
+// and so is a 403 most of the time; a 403 can also be a guardrail flag or an
+// edge block on that one request. None of them is an outage, and none is
+// retried: each is recorded as `http <status>` like any other failed call.
 export const JEV_PROVIDERS: Readonly<Record<JevProviderName, JevProvider>> = {
   typesafe: { name: 'typesafe', endpoint: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' },
   openrouter: { name: 'openrouter', endpoint: 'https://openrouter.ai/api/alpha/decisions', model: '~typesafe/jev-latest' },

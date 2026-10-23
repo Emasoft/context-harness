@@ -4,6 +4,7 @@ import { JEV_PROVIDERS, checkAnswer, parseResponse, probabilityOf, requestBody, 
 import { KEY_VARIABLES, keyFromDotenv, pickKey, pickProviderKey } from '../hooks/key'
 import { confusion, kappa, percentile, pointReport, sweep, type ShadowRecord } from '../hooks/report'
 import { scrub } from '../hooks/scrub'
+import { harnessSettingsFrom } from '../hooks/settings'
 import { STOP_QUESTION, announcesByRule, lastParagraph, stopSkipReason } from '../hooks/stop-gate'
 import {
   canWrite,
@@ -99,6 +100,13 @@ test('auto takes a TypeSafe key first, then an OpenRouter one; a named provider 
   expect(pickProviderKey('openrouter', onlyTypeSafe)).toBe(undefined)
   expect(pickProviderKey('typesafe', onlyOpenRouter)).toBe(undefined)
   expect(pickProviderKey('auto', { typesafe: {}, openrouter: {} })).toBe(undefined)
+})
+
+test('jevProvider is auto unless it names a provider', () => {
+  expect(harnessSettingsFrom({}).jevProvider).toBe('auto')
+  expect(harnessSettingsFrom({ jevProvider: 'OpenRouter' }).jevProvider).toBe('auto')
+  expect(harnessSettingsFrom({ jevProvider: 'openrouter' }).jevProvider).toBe('openrouter')
+  expect(harnessSettingsFrom({ jevProvider: 'typesafe' }).jevProvider).toBe('typesafe')
 })
 
 test('each provider is asked at its own endpoint with its own model id', () => {
